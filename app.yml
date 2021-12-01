@@ -16,14 +16,14 @@ default_events:
   # - check_run
   # - check_suite
   # - commit_comment
-  # - create
+  - create
   # - delete
   # - deployment
   # - deployment_status
   # - fork
   # - gollum
   # - issue_comment
-  - issues
+  # - issues
 # - label
 # - milestone
 # - member
@@ -40,7 +40,7 @@ default_events:
 # - pull_request_review_comment
 # - push
 # - release
-# - repository
+- repository
 # - repository_import
 # - status
 # - team
@@ -54,7 +54,7 @@ default_events:
 default_permissions:
   # Repository creation, deletion, settings, teams, and collaborators.
   # https://developer.github.com/v3/apps/permissions/#permission-on-administration
-  # administration: read
+  administration: read
 
   # Checks on code.
   # https://developer.github.com/v3/apps/permissions/#permission-on-checks
@@ -70,7 +70,7 @@ default_permissions:
 
   # Issues and related comments, assignees, labels, and milestones.
   # https://developer.github.com/v3/apps/permissions/#permission-on-issues
-  issues: write
+  # issues: write
 
   # Search repositories, list collaborators, and access repository metadata.
   # https://developer.github.com/v3/apps/permissions/#metadata-permissions
