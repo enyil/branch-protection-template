@@ -3,21 +3,6 @@
  * @param {import('probot').Probot} app
  */
 
-// sample yaml file
-// ---
-// template_mappings:
-//   - name: 'template-name-1'
-//     begins: 'pattern1_'
-//     ends: '_pattern1'
-//     contains: 'pattern1'
-//   - name: 'template-name-2'
-//     begins: 'pattern2_'
-//     ends: '_pattern2'
-//     contains: 'pattern2'
-// ---
-const fileContents = fs.readFileSync('./src/template-mappings.yml', 'utf8')
-const mappings = yaml.safeLoad(fileContents)
-
 // GraphQL query to set the branch protection rules
 const addBranchProtection = `
 mutation($repository: ID!, $pattern: String!, $requiresApprovingReviews: Boolean, $requiredApprovingReviewCount: Int, $isAdminEnforced: Boolean, $restrictsPushes: Boolean, $requiresLinearHistory: Boolean, $allowsForcePushes: Boolean, $allowsDeletions: Boolean) {
@@ -49,7 +34,7 @@ const getBranchProtectionRules = `
 query($organization: String!, $repo: String!, $cursor: String) {
   organization(login: $organization) {
    repository(name: $repo){
-      branchProtectionRules(first: 100) {
+      branchProtectionRules(first: 100, after: $cursor) {
         nodes {
           pattern
           requiresApprovingReviews
@@ -70,27 +55,21 @@ query($organization: String!, $repo: String!, $cursor: String) {
 }
 `
 
-// function to identify the template repository name from the repository name pattern
-function getTemplateRepositoryName(repositoryName) {
-  // iterate thru template mappings
-  for (const template in mappings.template_mappings) {
-    // check if ends is defined and if the repository name ends with the pattern
-    if (mappings.template_mappings[template].ends && repositoryName.endsWith(mappings.template_mappings[template].ends)) {
-      return mappings.template_mappings[template].name
-    }
-    // check if begins is defined and if the repository name begins with the pattern
-    if (mappings.template_mappings[template].begins && repositoryName.startsWith(mappings.template_mappings[template].begins)) {
-      return mappings.template_mappings[template].name
-    }
-    // check if contains is defined and if the repository name contains the pattern
-    if (mappings.template_mappings[template].contains && repositoryName.includes(mappings.template_mappings[template].contains)) {
-      return mappings.template_mappings[template].name
+// GraphQL query to get the template repository name
+const getTemplateRepositoryName = `
+query($organization: String!, $repo: String!) {
+  organization(login: $organization) {
+   repository(name: $repo){
+      templateRepository {
+        name
+        owner {
+          login
+        }
+      }
     }
   }
-  return null
 }
-
-
+`
 
 
 module.exports = (app) => {
@@ -100,25 +79,28 @@ module.exports = (app) => {
   app.log.info("loading template repositories patterns");
 
   app.on("repository.created", async (context) => {
-    // get the template repository name
-    const templateRepositoryName = getTemplateRepositoryName(context.payload.repository.name)
+    // Get the template repository name and owner
+    const templateRepositoryName = await context.github.graphql(getTemplateRepositoryName, {
+      organization: context.payload.organization.login,
+      repo: context.payload.repository.name
+    });
+
     // if the template repository name is not null
-    if (templateRepositoryName) {
-      rules = [];
-      // retrieve the all repository branch protection rules and appends it to the rules array
+    if (templateRepositoryName.data.organization.repository.templateRepository.name) {
+    // Get the branch protection rules for the template repository in a for loop
+      let rules = [];
+      let hasNextPage = true;
       let cursor = null;
-      do {
-        const { data, errors } = await context.github.query(getBranchProtectionRules, {
+      while (hasNextPage) {
+        const response = await context.github.graphql(getBranchProtectionRules, {
           organization: context.payload.organization.login,
-          repo: getTemplateRepositoryName(context.payload.repository.name),
+          repo: templateRepositoryName.data.organization.repository.templateRepository.name,
           cursor: cursor
         });
-        if (errors) {
-          throw errors;
-        }
-        rules = rules.concat(data.organization.repository.branchProtectionRules.nodes);
-        cursor = data.organization.repository.branchProtectionRules.pageInfo.endCursor;
-      } while (cursor);
+        branchProtectionRules = branchProtectionRules.concat(response.data.organization.repository.branchProtectionRules.nodes);
+        cursor = response.data.organization.repository.branchProtectionRules.pageInfo.endCursor;
+        hasNextPage = response.data.organization.repository.branchProtectionRules.pageInfo.hasNextPage;
+      }
       
       // add the branch protection rules from the result
       for (let i = 0; i < rules.length; i++) {
