@@ -80,32 +80,31 @@ module.exports = (app) => {
 
   app.on("repository.created", async (context) => {
     // Get the template repository name and owner
-    const templateRepositoryName = await context.github.graphql(getTemplateRepositoryName, {
+    const templateRepositoryName = await context.octokit.graphql(getTemplateRepositoryName, {
       organization: context.payload.organization.login,
       repo: context.payload.repository.name
     });
-
     // if the template repository name is not null
-    if (templateRepositoryName.data.organization.repository.templateRepository.name) {
+    if (templateRepositoryName.organization.repository.templateRepository) {
     // Get the branch protection rules for the template repository in a for loop
       let rules = [];
       let hasNextPage = true;
       let cursor = null;
       while (hasNextPage) {
-        const response = await context.github.graphql(getBranchProtectionRules, {
-          organization: context.payload.organization.login,
-          repo: templateRepositoryName.data.organization.repository.templateRepository.name,
+        const response = await context.octokit.graphql(getBranchProtectionRules, {
+          organization: templateRepositoryName.organization.repository.templateRepository.owner.login,
+          repo: templateRepositoryName.organization.repository.templateRepository.name,
           cursor: cursor
         });
-        branchProtectionRules = branchProtectionRules.concat(response.data.organization.repository.branchProtectionRules.nodes);
-        cursor = response.data.organization.repository.branchProtectionRules.pageInfo.endCursor;
-        hasNextPage = response.data.organization.repository.branchProtectionRules.pageInfo.hasNextPage;
+        rules = rules.concat(response.organization.repository.branchProtectionRules.nodes);
+        cursor = response.organization.repository.branchProtectionRules.pageInfo.endCursor;
+        hasNextPage = response.organization.repository.branchProtectionRules.pageInfo.hasNextPage;
       }
       
       // add the branch protection rules from the result
       for (let i = 0; i < rules.length; i++) {
-        const { data, errors } = await context.github.query(addBranchProtection, {
-          repository: context.payload.repository.id,
+        const { data, errors } = await context.octokit.graphql(addBranchProtection, {
+          repository: context.payload.repository.node_id,
           pattern: rules[i].pattern,
           requiresApprovingReviews: rules[i].requiresApprovingReviews,
           requiredApprovingReviewCount: rules[i].requiredApprovingReviewCount,
@@ -115,7 +114,9 @@ module.exports = (app) => {
           allowsForcePushes: rules[i].allowsForcePushes,
           allowsDeletions: rules[i].allowsDeletions
         });
+        
         if (errors) {
+          // updates existing branch protection rules
           throw errors;
         }
       }
