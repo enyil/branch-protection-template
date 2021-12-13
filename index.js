@@ -100,7 +100,7 @@ module.exports = (app) => {
         cursor = response.organization.repository.branchProtectionRules.pageInfo.endCursor;
         hasNextPage = response.organization.repository.branchProtectionRules.pageInfo.hasNextPage;
       }
-      
+
       // add the branch protection rules from the result
       for (let i = 0; i < rules.length; i++) {
         const { data, errors } = await context.octokit.graphql(addBranchProtection, {
@@ -114,12 +114,31 @@ module.exports = (app) => {
           allowsForcePushes: rules[i].allowsForcePushes,
           allowsDeletions: rules[i].allowsDeletions
         });
-        
+
         if (errors) {
           // updates existing branch protection rules
           throw errors;
         }
       }
+
+      // retrieve teams from the template repository
+      const templateRepositoryTeams = await context.octokit.request("GET /repos/{org}/{repo}/teams", {
+        org: templateRepositoryName.organization.repository.templateRepository.owner.login,
+        repo: templateRepositoryName.organization.repository.templateRepository.name
+      });
+      console.log("template teams:" + templateRepositoryTeams.data[0].name);
+
+      // add teams to repository
+      for (let j = 0; j < templateRepositoryTeams.data.length; j++) {
+        const response = await context.octokit.request("PUT /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}", {
+          org: context.payload.organization.login,
+          team_slug: templateRepositoryTeams.data[j].slug,
+          owner: context.payload.repository.owner.login,
+          repo: context.payload.repository.name,
+          permission: templateRepositoryTeams.data[j].permission
+        });
+      }
+
     } else {
       app.log.info("no template repository name found for " + context.payload.repository.name);
     }
