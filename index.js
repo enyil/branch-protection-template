@@ -126,7 +126,6 @@ module.exports = (app) => {
         org: templateRepositoryName.organization.repository.templateRepository.owner.login,
         repo: templateRepositoryName.organization.repository.templateRepository.name
       });
-      console.log("template teams:" + templateRepositoryTeams.data[0].name);
 
       // add teams to repository
       for (let j = 0; j < templateRepositoryTeams.data.length; j++) {
